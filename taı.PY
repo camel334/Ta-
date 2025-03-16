@@ -275,6 +275,14 @@ class ScheduledTaskManager:
         self.timer = QTimer(parent)
         self.timer.timeout.connect(self.check_tasks)
         self.timer.start(60000)  # 60 saniye = 1 dakika
+        
+        # Anlık görevler için zamanlayıcı
+        self.immediate_timer = QTimer(parent)
+        self.immediate_timer.timeout.connect(self.check_immediate_tasks)
+        self.immediate_timer.start(1000)  # Her saniye kontrol et
+        
+        # Anlık görevler listesi
+        self.immediate_tasks = []
     
     def load_tasks(self):
         # Kayıtlı görevleri dosyadan yükle
@@ -399,6 +407,31 @@ class ScheduledTaskManager:
             if app_name and self.parent:
                 # Mevcut uygulama açma fonksiyonunu çağır
                 self.parent.find_and_run_app(app_name, app_exe)
+
+    def add_immediate_task(self, delay_minutes, action, parameters=None):
+        """Hemen/kısa süreli görev ekler"""
+        task = {
+            "execute_time": time.time() + (delay_minutes * 60),  # Şu andan X dakika sonra
+            "action": action,
+            "parameters": parameters or {}
+        }
+        self.immediate_tasks.append(task)
+        return len(self.immediate_tasks) - 1  # Görev ID'sini döndür
+
+    def check_immediate_tasks(self):
+        """Anlık görevleri kontrol eder"""
+        current_time = time.time()
+        tasks_to_remove = []
+        
+        for i, task in enumerate(self.immediate_tasks):
+            if current_time >= task["execute_time"]:
+                # Görevi çalıştır
+                self.execute_task(task)
+                tasks_to_remove.append(i)
+        
+        # Tamamlanan görevleri listeden kaldır
+        for i in reversed(tasks_to_remove):
+            del self.immediate_tasks[i]
 
 class App(QWidget):
     def __init__(self):
@@ -2067,9 +2100,91 @@ class App(QWidget):
             return True  # Komutu işlenmiş olarak kabul et
 
     def check_and_run_scheduled_task_command(self, text):
-        """Zamanlanmış görev komutlarını işler"""
         text_lower = text.lower()
         
+        # Hemen bilgisayarı kapatma komutu
+        if any(x in text_lower for x in ["pcyi kapat", "pc'yi kapat", "bilgisayarı kapat"]) and not any(x in text_lower for x in ["dakika", "saat"]):
+            # Görevi hemen ekle
+            self.task_manager.add_immediate_task(
+                0,  # Hemen
+                "shutdown",
+                {"delay": 10}  # 10 saniye uyarı süresi
+            )
+            
+            # Kullanıcıya bilgi ver
+            success_msg = ChatMessage(
+                "✅ Bilgisayarı kapatıyorum (10 saniye içinde)", 
+                is_user=False
+            )
+            self.messages_layout.addWidget(success_msg)
+            return True
+        
+        # Hemen/kısa süreli görevler için regex
+        immediate_shutdown_pattern = r"(\d+)\s+(?:dakika|dk)\s+sonra\s+(?:bilgisayarı|pc'yi|pc yi|bilgisayarımı)\s+(?:kapat|shutdown|kapa)"
+        immediate_restart_pattern = r"(\d+)\s+(?:dakika|dk)\s+sonra\s+(?:bilgisayarı|pc'yi|pc yi|bilgisayarımı)\s+(?:yeniden\s+başlat|restart|reset)"
+        immediate_reminder_pattern = r"(\d+)\s+(?:dakika|dk)\s+sonra\s+(?:bana)?\s+(.+?)\s+(?:hatırlat|hatırlatır mısın)"
+        
+        # Hemen/kısa süreli bilgisayarı kapatma görevi
+        immediate_shutdown_match = re.search(immediate_shutdown_pattern, text_lower)
+        if immediate_shutdown_match:
+            delay = int(immediate_shutdown_match.group(1))
+            
+            # Görevi ekle
+            self.task_manager.add_immediate_task(
+                delay,
+                "shutdown",
+                {"delay": 60}  # 60 saniye uyarı süresi
+            )
+            
+            # Kullanıcıya bilgi ver
+            success_msg = ChatMessage(
+                f"✅ {delay} dakika sonra bilgisayarı kapatacağım.", 
+                is_user=False
+            )
+            self.messages_layout.addWidget(success_msg)
+            return True
+        
+        # Hemen/kısa süreli bilgisayarı yeniden başlatma görevi
+        immediate_restart_match = re.search(immediate_restart_pattern, text_lower)
+        if immediate_restart_match:
+            delay = int(immediate_restart_match.group(1))
+            
+            # Görevi ekle
+            self.task_manager.add_immediate_task(
+                delay,
+                "restart",
+                {"delay": 60}  # 60 saniye uyarı süresi
+            )
+            
+            # Kullanıcıya bilgi ver
+            success_msg = ChatMessage(
+                f"✅ {delay} dakika sonra bilgisayarı yeniden başlatacağım.", 
+                is_user=False
+            )
+            self.messages_layout.addWidget(success_msg)
+            return True
+        
+        # Hemen/kısa süreli hatırlatıcı görevi
+        immediate_reminder_match = re.search(immediate_reminder_pattern, text_lower)
+        if immediate_reminder_match:
+            delay = int(immediate_reminder_match.group(1))
+            reminder_message = immediate_reminder_match.group(2).strip()
+            
+            # Görevi ekle
+            self.task_manager.add_immediate_task(
+                delay,
+                "reminder",
+                {"message": f"⏰ HATIRLATICI: {reminder_message}"}
+            )
+            
+            # Kullanıcıya bilgi ver
+            success_msg = ChatMessage(
+                f"✅ {delay} dakika sonra size '{reminder_message}' hatırlatacağım.", 
+                is_user=False
+            )
+            self.messages_layout.addWidget(success_msg)
+            return True
+
         # Görev ekleme komutları için regex
         shutdown_pattern = r"(her\s+gün|hafta\s+içi|hafta\s+sonu|pazartesi|salı|çarşamba|perşembe|cuma|cumartesi|pazar)\s+saat\s+(\d{1,2})[:\.]?(\d{0,2})\s+(?:da|de)?\s+(bilgisayarı|pc'yi|pc yi|bilgisayarımı)\s+(kapat|shutdown|kapa)"
         
