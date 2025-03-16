@@ -1,6 +1,7 @@
 import sys
 import time
 import subprocess  # Paket yükleme için eklendi
+from pypresence import Presence  # Discord RPC için eklendi
 import pyautogui
 import google.generativeai as genai
 from PIL import Image
@@ -402,6 +403,15 @@ class ScheduledTaskManager:
 class App(QWidget):
     def __init__(self):
         super().__init__()
+        
+        # Discord RPC başlatma
+        try:
+            self.rpc = Presence("1350774636391956542")  # Discord uygulama ID'nizi buraya yazın
+            self.rpc.connect()
+            self.update_discord_status("Ana Menü", "TAI ile sohbet ediyor")
+        except Exception as e:
+            print(f"Discord RPC başlatılamadı: {e}")
+            self.rpc = None
         
         # API anahtarını sor
         self.get_api_key()
@@ -868,6 +878,9 @@ class App(QWidget):
         if not user_text:
             return
             
+        # Discord durumunu güncelle
+        self.update_discord_status("Sohbet", "TAI ile mesajlaşıyor")
+            
         # Kullanıcı mesajını ekle
         user_message = ChatMessage(user_text, is_user=True)
         self.messages_layout.addWidget(user_message)
@@ -1109,6 +1122,9 @@ class App(QWidget):
             return
             
         try:
+            # Discord durumunu güncelle
+            self.update_discord_status("Görsel Analizi", "Yapay zeka ile görsel analiz ediyor")
+            
             # Analiz işlemi başladı mesajı
             self.process_message = ChatMessage("🔍 Görsel analiz ediliyor...", is_user=False)
             self.messages_layout.addWidget(self.process_message)
@@ -1144,6 +1160,9 @@ class App(QWidget):
     def take_screenshot(self):
         """Manuel olarak ekran görüntüsü alma ve analiz etme"""
         try:
+            # Discord durumunu güncelle
+            self.update_discord_status("Ekran Analizi", "Ekran görüntüsü analiz ediyor")
+            
             # Bilgi mesajı
             self.info_message = ChatMessage("📷 Ekran görüntüsü alınıyor...", is_user=False)
             self.messages_layout.addWidget(self.info_message)
@@ -2257,6 +2276,20 @@ class App(QWidget):
                 return True
         
         return False  # Zamanlanmış görev komutu değil
+
+    def update_discord_status(self, details, state=None):
+        """Discord durumunu günceller"""
+        if self.rpc:
+            try:
+                self.rpc.update(
+                    details=details,
+                    state=state,
+                    large_image="tai_logo",  # Discord uygulamanıza yüklediğiniz resmin adı
+                    large_text="TAI - Türkçe Yapay Zeka Asistanı",
+                    start=int(time.time())  # Aktivite başlangıç zamanı
+                )
+            except Exception as e:
+                print(f"Discord durumu güncellenemedi: {e}")
 
 if __name__ == '__main__':
     # QMessageBox stilini özelleştir
